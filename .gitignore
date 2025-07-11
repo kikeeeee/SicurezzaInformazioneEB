@@ -1,0 +1,13 @@
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn.lock
+
+# Variabili d'ambiente e chiavi
+.env
+.env.*.local
+
+# Sistema operativo / editor
+.DS_Store
+.idea/
+.vscode/
