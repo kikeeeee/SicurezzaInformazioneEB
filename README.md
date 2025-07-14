@@ -700,11 +700,3 @@ module.exports = app;
 - **JavaScript**: Interazioni client-side
 
 ---
-
-## Conclusioni
-
-Questo sistema OAuth2 fornisce una base solida per l'autenticazione federata in applicazioni web moderne. Il codice è ben strutturato, documentato e include tutte le funzionalità essenziali per un sistema di autenticazione sicuro e scalabile.
-
-La separazione tra autenticazione (OAuth2) e autorizzazione (JWT) permette flessibilità nell'architettura, mentre l'interfaccia utente moderna garantisce una buona user experience.
-
-Per l'uso in produzione, è necessario implementare le considerazioni di sicurezza aggiuntive e sostituire il database in memoria con una soluzione persistente.
