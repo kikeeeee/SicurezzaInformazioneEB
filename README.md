@@ -31,15 +31,29 @@ const crypto = require('crypto');
 ```
 
 **Spiegazione:**
-- `dotenv`: Carica le variabili d'ambiente dal file `.env`
-- `express`: Framework web per Node.js
-- `express-session`: Gestione delle sessioni HTTP
-- `passport`: Middleware per l'autenticazione
-- `passport-google-oauth20`: Strategia OAuth2 per Google
-- `passport-github2`: Strategia OAuth2 per GitHub
-- `jsonwebtoken`: Libreria per generare e verificare JWT
-- `crypto`: Modulo nativo per operazioni crittografiche
+- `require('dotenv').config();`  
+  Carica le variabili d'ambiente dal file `.env` e le aggiunge a `process.env`, mantenendo segreti e configurazioni esterni al codice.
 
+- `const express = require('express');`  
+  Importa il framework Express, che semplifica la gestione di routing e middleware per il server HTTP.
+
+- `const session = require('express-session');`  
+  Carica il middleware per creare e gestire cookie di sessione (`connect.sid`), consentendo di mantenere lo stato di autenticazione tra le richieste.
+
+- `const passport = require('passport');`  
+  Importa Passport, la libreria che fornisce un'unica API per autenticazione e autorizzazione, con strategie modulari.
+
+- `const GoogleStrategy = require('passport-google-oauth20').Strategy;`  
+  Importa la strategia OAuth2 per Google, che gestisce redirect, scambio del codice e recupero del profilo utente.
+
+- `const GitHubStrategy = require('passport-github2').Strategy;`  
+  Importa la strategia OAuth2 per GitHub, simile a quella di Google ma con endpoint e scope specifici.
+
+- `const jwt = require('jsonwebtoken');`  
+  Carica la libreria per creare e verificare JSON Web Token, utilizzati per autorizzazione stateless delle API.
+
+- `const crypto = require('crypto');`  
+  Importa il modulo crittografico di Node.js, utilizzato qui per generare identificativi unici (`crypto.randomUUID()`) in maniera sicura.
 ---
 
 ## 2. Verifica della Configurazione
@@ -87,13 +101,32 @@ const config = {
 ```
 
 **Spiegazione:**
-- Crea l'istanza Express
-- Definisce la porta del server (default: 3000)
-- Centralizza la configurazione OAuth2 per Google e GitHub
-- Imposta i parametri JWT (secret e scadenza)
-- Configura il segreto per le sessioni
-- Utilizza valori di fallback per lo sviluppo
+- `const app = express();`  
+  Crea un'istanza di Express, che sarà il server HTTP su cui definisci rotte, middleware e ascolti le richieste.
 
+- `const PORT = process.env.PORT || 3000;`  
+  Imposta la porta su cui il server ascolterà. Usa la variabile d'ambiente `PORT` (utile in ambienti di hosting) oppure 3000 come fallback.
+
+## Oggetto `config`
+
+Raccoglie in un unico posto tutte le chiavi e impostazioni sensibili, permettendo di cambiare ambiente (locale, staging, produzione) senza modificare il codice.
+
+- **`google`**  
+  - `clientID`: ID pubblico dell’app Google OAuth2, preso da `process.env.GOOGLE_CLIENT_ID` o fallback di sviluppo.  
+  - `clientSecret`: Segreto privato per Google OAuth2, preso da `process.env.GOOGLE_CLIENT_SECRET` o fallback.  
+  - `callbackURL`: Percorso in cui l’utente torna dopo il login Google.
+
+- **`github`**  
+  - `clientID`: ID pubblico dell’app GitHub OAuth2 (`process.env.GITHUB_CLIENT_ID` o fallback).  
+  - `clientSecret`: Segreto privato per GitHub OAuth2 (`process.env.GITHUB_CLIENT_SECRET` o fallback).  
+  - `callbackURL`: Percorso in cui GitHub reindirizza l’utente dopo l’autenticazione.
+
+- **`jwt`**  
+  - `secret`: Chiave segreta per firmare e verificare i JSON Web Token, letta da `process.env.JWT_SECRET` o fallback.  
+  - `expiresIn`: Durata di validità del token (qui 24 ore).
+
+- **`session`**  
+  - `secret`: Segreto per firmare il cookie di sessione (`connect.sid`), preso da `process.env.SESSION_SECRET` o fallback.
 ---
 
 ## 4. Middleware di Base
@@ -113,14 +146,28 @@ app.use(passport.session());
 ```
 
 **Spiegazione:**
-- `express.json()`: Parsing del body JSON delle richieste
-- `express.urlencoded()`: Parsing dei dati form-encoded
-- `session()`: Configurazione delle sessioni HTTP
-  - `resave: false`: Non salva sessioni non modificate
-  - `saveUninitialized: false`: Non salva sessioni vuote
-  - `secure`: Cookie sicuri solo in produzione (HTTPS)
-- `passport.initialize()`: Inizializza Passport.js
-- `passport.session()`: Abilita il supporto per le sessioni persistenti
+- `app.use(express.json());`  
+  Aggiunge un middleware che analizza automaticamente il corpo delle richieste in formato JSON e popola `req.body` con l’oggetto risultante.
+
+- `app.use(express.urlencoded({ extended: true }));`  
+  Monta un middleware per interpretare il corpo delle richieste `application/x-www-form-urlencoded` (tipico dei form HTML) e popola `req.body`.  
+  - `extended: true` usa la libreria `qs` per parsing avanzato (nested object, array).
+
+- `app.use(session({ ... }));`  
+  Avvia il middleware di sessione `express-session` con le seguenti opzioni:  
+  - `secret`: chiave per firmare il cookie di sessione.  
+  - `resave: false`: non registra la sessione se non viene modificata.  
+  - `saveUninitialized: false`: non crea una sessione vuota se l’utente non ha effettuato il login.  
+  - `cookie.secure`: imposta `true` per inviare il cookie solo su HTTPS in produzione.
+
+- `app.use(passport.initialize());`  
+  Inizializza Passport, aggiungendo a ogni oggetto `req` le funzioni di autenticazione (`req.login`, `req.logout`, `req.isAuthenticated`) e il supporto all’uso delle strategie.
+
+- `app.use(passport.session());`  
+  Collega Passport al meccanismo di sessione:  
+  - Legge il cookie di sessione (`connect.sid`).  
+  - Recupera l’ID utente serializzato.  
+  - Richiama `passport.deserializeUser()` per ricostruire `req.user` con l’oggetto utente completo.
 
 ---
 
@@ -151,11 +198,17 @@ passport.deserializeUser((id, done) => {
 ```
 
 **Spiegazione:**
-- `serializeUser`: Determina quale dato dell'utente salvare nella sessione (solo l'ID)
-- `deserializeUser`: Recupera l'utente completo dall'ID salvato in sessione
-- Ottimizza le prestazioni salvando solo l'ID nella sessione
-- Permette la persistenza dell'autenticazione tra le richieste
+- **`passport.serializeUser((user, done) => { ... });`**  
+  - Viene chiamato al termine dell’autenticazione (in `req.login`).  
+  - Riceve l’oggetto `user` e una funzione `done(err, key)`.  
+  - **Scopo**: scegliere quale informazione dell’utente salvare nella sessione.  
+  - In questo caso, salva solo `user.id` (leggero e non sensibile) nel cookie di sessione.
 
+- **`passport.deserializeUser((id, done) => { ... });`**  
+  - Viene eseguito ad ogni richiesta successiva se esiste una sessione valida.  
+  - Riceve l’`id` precedentemente serializzato e una funzione `done(err, user)`.  
+  - **Scopo**: recuperare l’oggetto utente completo dallo store (qui `users.get(id)`) e assegnarlo a `req.user`.  
+  - Garantisce che in ogni handler tu possa accedere a `req.user` con tutti i dati utente.
 ---
 
 ## 7. Strategia Google OAuth2
@@ -200,17 +253,45 @@ passport.use(new GoogleStrategy({
 ```
 
 **Spiegazione:**
-- Configura la strategia OAuth2 per Google
-- `scope`: Richiede accesso a profilo e email
-- **Callback function**: Gestisce la risposta di Google dopo l'autenticazione
-- **Utente esistente**: Aggiorna `lastLogin` e `accessToken`
-- **Nuovo utente**: Crea un nuovo record con:
-  - ID univoco generato con `crypto.randomUUID()`
-  - Informazioni dal profilo Google
-  - Token di accesso e refresh
-  - Timestamp di creazione e ultimo accesso
-- **Gestione errori**: Cattura e restituisce eventuali errori
+- **Configurazione**  
+  - `clientID` e `clientSecret`: credenziali ottenute da Google Cloud Console.  
+  - `callbackURL`: endpoint interno `/auth/google/callback` dove Google restituisce il codice.  
+  - `scope`: autorizzazioni richieste (`profile` per dati base, `email` per l’indirizzo).
 
+- **Verify Callback** (funzione `async`)  
+  1. **Ricerca utente esistente**  
+     ```js
+     const existingUser = Array.from(users.values()).find(
+       user => user.googleId === profile.id
+     );
+     ```  
+     Se l’utente con lo stesso `googleId` è già registrato, aggiorna `lastLogin` e `accessToken`.
+
+  2. **Creazione nuovo utente**  
+     ```js
+     const newUser = {
+       id: crypto.randomUUID(),
+       googleId: profile.id,
+       email: profile.emails[0].value,
+       name: profile.displayName,
+       avatar: profile.photos[0].value,
+       provider: 'google',
+       accessToken,
+       refreshToken,
+       createdAt: new Date(),
+       lastLogin: new Date()
+     };
+     users.set(newUser.id, newUser);
+     ```  
+     - `crypto.randomUUID()`: genera un ID univoco.  
+     - `profile`: oggetto restituito da Google con campi come `id`, `emails`, `displayName`, `photos`.
+
+- **Chiamata `done(null, user)`**  
+  - Se non ci sono errori, Passport registra l’utente serializzato nella sessione.  
+  - In caso d’errore, `done(error, null)` invia l’errore al middleware di Passport.
+
+- **Error Handling**  
+  Il blocco `try/catch` intercetta eccezioni nella ricerca/creazione utente e le passa a Passport per gestirle nel flusso di autenticazione.  
 ---
 
 ## 8. Strategia GitHub OAuth2
@@ -255,13 +336,45 @@ passport.use(new GitHubStrategy({
 ```
 
 **Spiegazione:**
-- Simile alla strategia Google ma per GitHub
-- `scope: ['user:email']`: Richiede accesso all'email
-- **Differenze specifiche GitHub**:
-  - `githubId` invece di `googleId`
-  - Email potrebbe non essere disponibile (`null`)
-  - Nome usa `displayName` o `username` come fallback
-- **Gestione dei dati**: Struttura simile ma adattata alle specifiche GitHub
+- **Configurazione**  
+  - `clientID` e `clientSecret`: credenziali ottenute da GitHub Developer Settings.  
+  - `callbackURL`: endpoint interno `/auth/github/callback` dove GitHub restituisce il codice di autorizzazione.  
+  - `scope`: autorizzazioni (`user:email` per accedere all’indirizzo email dell’utente).
+
+- **Verify Callback** (funzione `async`)  
+  1. **Ricerca utente esistente**  
+     ```js
+     const existingUser = Array.from(users.values()).find(
+       user => user.githubId === profile.id
+     );
+     ```  
+     Se un utente con lo stesso `githubId` esiste già, aggiorna `lastLogin` e `accessToken`, poi chiama `done(null, existingUser)`.
+
+  2. **Creazione nuovo utente**  
+     ```js
+     const newUser = {
+       id: crypto.randomUUID(),
+       githubId: profile.id,
+       email: profile.emails ? profile.emails[0].value : null,
+       name: profile.displayName || profile.username,
+       avatar: profile.photos[0].value,
+       provider: 'github',
+       accessToken,
+       refreshToken,
+       createdAt: new Date(),
+       lastLogin: new Date()
+     };
+     users.set(newUser.id, newUser);
+     ```  
+     - `crypto.randomUUID()`: genera un ID univoco per l’utente.  
+     - `profile`: oggetto restituito da GitHub con `id`, `emails`, `displayName`, `username`, `photos`.
+
+- **Chiamata `done(null, user)`**  
+  - Conclude il flusso di autenticazione comunicando a Passport l’oggetto utente da serializzare nella sessione.  
+  - In caso di errore, `done(error, null)` passa l’errore al middleware di Passport.
+
+- **Gestione degli errori**  
+  Il blocco `try/catch` cattura eccezioni nella ricerca o creazione dell’utente e le passa a Passport perché le gestisca correttamente nel flusso di autenticazione.
 
 ---
 
@@ -289,14 +402,29 @@ const authenticateJWT = (req, res, next) => {
 ```
 
 **Spiegazione:**
-- Middleware per proteggere le API con JWT
-- **Header Authorization**: Cerca il token nel formato `Bearer <token>`
-- **Verifica JWT**: Valida il token usando il secret configurato
-- **Successo**: Aggiunge l'utente decodificato a `req.user`
-- **Errori**:
-  - 401: Token mancante
-  - 403: Token non valido o scaduto
+- **`authHeader`**: legge l’header `Authorization` dalla richiesta, che dovrebbe avere formato `Bearer <token>`.
 
+- **Estrazione del token**:  
+  ```js
+  const token = authHeader.split(' ')[1];
+  ```  
+  Divide la stringa su spazio e prende la parte dopo `Bearer`.
+
+- **Verifica del token**:  
+  ```js
+  jwt.verify(token, config.jwt.secret, (err, user) => { ... });
+  ```  
+  - Controlla la firma e la scadenza del JWT usando la chiave segreta `config.jwt.secret`.  
+  - In caso di errore (`err`), risponde con **403 Forbidden** e messaggio “Token non valido”.
+
+- **Popolamento di `req.user`**:  
+  Se la verifica ha successo, `user` contiene il payload decodificato (claim). Viene assegnato a `req.user`, rendendo disponibili le informazioni dell’utente nei handler successivi.
+
+- **Gestione delle risposte**:  
+  - **401 Unauthorized**: quando manca completamente l’header `Authorization`.  
+  - **403 Forbidden**: quando il token è presente ma non valido (firma scaduta, manomessa).
+
+- **Scopo**: proteggere percorsi API restituendo solo a richieste con JWT valido l’accesso alle risorse protette.
 ---
 
 ## 10. Middleware di Autenticazione Sessione
@@ -311,10 +439,21 @@ const ensureAuthenticated = (req, res, next) => {
 ```
 
 **Spiegazione:**
-- Middleware per proteggere le route con autenticazione di sessione
-- `req.isAuthenticated()`: Metodo Passport.js per verificare l'autenticazione
-- **Successo**: Procede alla route successiva
-- **Fallimento**: Restituisce errore 401
+ **`req.isAuthenticated()`**: metodo fornito da Passport che restituisce `true` se l’utente ha effettuato correttamente il login e la sua sessione è ancora valida.
+
+- **Flusso di controllo**:  
+  - Se l’utente è autenticato (`true`), chiama `next()` per passare al middleware o route handler successivo.  
+  - Se non autenticato (`false`), risponde immediatamente con **401 Unauthorized** e un messaggio JSON.
+
+- **Utilizzo**:  
+  Protegge rotte basate su sessione (login tradizionale con cookie), garantendo che solo utenti loggati possano accedere a risorse server-rendered o endpoint protetti.
+
+- **Differenza da JWT**:  
+  - `ensureAuthenticated` verifica la sessione lato server.  
+  - `authenticateJWT` verifica un token stateless inviato nell’header `Authorization`.  
+
+- **Scopo**:  
+  Offrire un controllo semplice dello stato di autenticazione per tutte le route che richiedono che l’utente abbia già eseguito `passport.authenticate()` in precedenza.
 
 ---
 
@@ -366,17 +505,21 @@ app.get('/', (req, res) => {
 ```
 
 **Spiegazione:**
-- Route principale che gestisce sia login che dashboard
-- **Utente autenticato**: Mostra dashboard con:
-  - Informazioni profilo completo
-  - Avatar e dati del provider
-  - Timestamp di accesso
-  - Pulsante logout
-- **Utente non autenticato**: Mostra:
-  - Descrizione del sistema
-  - Pulsanti di login per Google/GitHub
-  - Informazioni tecniche
-  - Requisiti del sistema
+- **Percorso**: `GET '/'` definisce l’endpoint principale dell’app, accessibile all’URL base (es. `http://localhost:3000/`).
+
+- **Controllo di autenticazione**:  
+  - `if (req.user)`: verifica se Passport ha popolato `req.user` durante la deserializzazione della sessione, indicando che l’utente ha effettuato correttamente il login.  
+  - Se `req.user` esiste, il server assume che l’utente sia autenticato.
+
+- **Response in base allo stato**:  
+  - **Utente autenticato**: invia una pagina HTML che funge da dashboard, mostrando contenuti riservati (dati personali, link protetti, pulsante di logout).  
+  - **Utente non autenticato**: invia una schermata di login con i pulsanti per avviare il flusso OAuth (Google/GitHub).
+
+- **Utilizzo di `res.send()`**:  
+  Inietta direttamente stringhe HTML nell’output HTTP. È un approccio rapido per template inline, ideale in demo o progetti di piccole dimensioni.
+
+- **Scopo**:  
+  Centralizzare la logica di routing per la home page, servendo dinamicamente contenuti diversi in base allo stato di autenticazione dell’utente.
 
 ---
 
@@ -407,15 +550,40 @@ app.get('/auth/google/callback',
 ```
 
 **Spiegazione:**
-- **Route iniziale**: Avvia il flusso OAuth2 con Google
-- **Callback route**: Gestisce la risposta di Google
-- **Successo**:
-  - Genera JWT token con dati utente
-  - Salva token nella sessione
-  - Log del login riuscito
-  - Redirect alla homepage
-- **Fallimento**: Redirect alla pagina di errore
+- **`GET /auth/google`**  
+  - **Scopo**: avvia il flusso di autenticazione OAuth2 con Google.  
+  - **`passport.authenticate('google', { scope: ['profile', 'email'] })`**:  
+    - `google`: nome della strategia Passport.  
+    - `scope`: insieme di permessi richiesti (dati anagrafici base e indirizzo email).  
+  - **Effetto**: reindirizza il browser a un URL di Google dai quale l’utente concede i permessi.
 
+- **`GET /auth/google/callback`**  
+  - **Primo middleware (`passport.authenticate`)**:  
+    - Verifica la risposta di Google contenente il `code`.  
+    - In caso di fallimento reindirizza a `/login?error=google`.  
+  - **Secondo middleware (callback)**:  
+    1. **Generazione JWT**:  
+       ```js
+       jwt.sign(
+         { id, email, name, provider },
+         config.jwt.secret,
+         { expiresIn: config.jwt.expiresIn }
+       );
+       ```  
+       Crea un token firmato con le informazioni essenziali dell’utente, valido per il tempo configurato.  
+    2. **Memorizzazione in sessione**:  
+       ```js
+       req.session.jwtToken = token;
+       ```  
+       Salva il JWT nella sessione per un rapido recupero da parte del front-end.  
+    3. **Log e redirect**: stampa un messaggio di successo in console e reindirizza l’utente alla home (`/`), dove potrà trovare la dashboard.
+
+- **Flusso completo**:  
+  1. L’utente clicca “Login con Google” → `/auth/google`.  
+  2. Google chiede credenziali e consensi → callback con `code`.  
+  3. Il middleware Passport scambia `code` per `accessToken` e `profile`, esegue la _verify callback_.  
+  4. Passport chiama `req.login()` → sessione utente.  
+  5. Il callback finale genera un JWT, lo salva in sessione e porta l’utente alla pagina protetta.
 ---
 
 ## 14. Route OAuth2 per GitHub
@@ -445,12 +613,40 @@ app.get('/auth/github/callback',
 ```
 
 **Spiegazione:**
-- Struttura identica alle route Google ma per GitHub
-- **Differenze**:
-  - Scope diverso (`user:email`)
-  - Log mostra il nome invece dell'email
-  - Redirect di errore specifico per GitHub
+- **`GET /auth/github`**  
+  - **Scopo**: avvia il flusso di autenticazione OAuth2 con GitHub.  
+  - **`passport.authenticate('github', { scope: ['user:email'] })`**:  
+    - `github`: nome della strategia Passport per GitHub.  
+    - `scope`: permessi richiesti (accesso all’indirizzo email dell’utente, pubblica o privata).  
+  - **Effetto**: reindirizza il browser a GitHub per ottenere il consenso dell’utente.
 
+- **`GET /auth/github/callback`**  
+  - **Primo middleware (`passport.authenticate`)**:  
+    - Gestisce il ritorno da GitHub con il `code`.  
+    - In caso di fallimento guida al redirect `/login?error=github`.  
+  - **Secondo middleware (callback)**:  
+    1. **Generazione JWT**:  
+       ```js
+       jwt.sign(
+         { id, email, name, provider },
+         config.jwt.secret,
+         { expiresIn: config.jwt.expiresIn }
+       );
+       ```  
+       Crea un token firmato con dati utente essenziali, valido per il tempo configurato.  
+    2. **Memorizzazione in sessione**:  
+       ```js
+       req.session.jwtToken = token;
+       ```  
+       Salva il JWT nella sessione per essere recuperato dal front-end.  
+    3. **Log e redirect**: stampa un messaggio di successo e reindirizza alla home (`/`) per visualizzare la dashboard.
+
+- **Flusso completo**:  
+  1. L’utente clicca “Login con GitHub” → `/auth/github`.  
+  2. GitHub chiede le credenziali e autorizza l’accesso → callback con `code`.  
+  3. Passport scambia `code` per `accessToken` e `profile`, esegue la verify callback.  
+  4. Passport chiama `req.login()` → sessione utente.  
+  5. Il callback genera un JWT, lo salva in sessione e porta l’utente alla pagina protetta.
 ---
 
 ## 15. Pagina di Errore Login
