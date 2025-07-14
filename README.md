@@ -700,11 +700,24 @@ app.get('/api/profile', ensureAuthenticated, (req, res) => {
 ```
 
 **Spiegazione:**
-- API per ottenere il profilo dell'utente autenticato
-- **Middleware**: `ensureAuthenticated` (autenticazione di sessione)
-- **Risposta**: JSON con dati essenziali del profilo
-- **Filtraggio**: Esclude dati sensibili (token, password, etc.)
+- **Percorso**: `GET /api/profile` è un endpoint API REST che restituisce i dati dell’utente autenticato.
 
+- **Middleware `ensureAuthenticated`**:  
+  Garantisce che la richiesta venga elaborata solo se c’è una sessione valida (utente loggato). In caso contrario, risponde con **401 Unauthorized**.
+
+- **Creazione dell’oggetto `userProfile`**:  
+  - Estrae le informazioni principali da `req.user` (impostato da Passport in `deserializeUser`).  
+  - Campi inclusi:  
+    - `id`: identificatore univoco.  
+    - `name`, `email`, `avatar`: dati anagrafici e immagine profilo.  
+    - `provider`: origine del login (`google`, `github`).  
+    - `createdAt`, `lastLogin`: timestamp di creazione e ultimo accesso.
+
+- **Risposta JSON**:  
+  Utilizza `res.json(userProfile)` per inviare un payload JSON con i dati utente. Questo metodo imposta automaticamente l’header `Content-Type: application/json`.
+
+- **Scopo**:  
+  Fornire un endpoint protetto che client-side (browser, SPA, app mobile) possono chiamare per ottenere i dettagli del profilo dell’utente loggato.
 ### API Token
 ```javascript
 app.get('/api/token', ensureAuthenticated, (req, res) => {
@@ -716,10 +729,20 @@ app.get('/api/token', ensureAuthenticated, (req, res) => {
 ```
 
 **Spiegazione:**
-- API per ottenere il JWT token dell'utente
-- **Requisito**: Sessione attiva
-- **Risposta**: Token JWT e tempo di scadenza
-- **Uso**: Permette alle applicazioni client di ottenere il token per API calls
+-- **Percorso**: `GET /api/token` è un endpoint API REST che restituisce il JSON Web Token (JWT) generato in fase di login.
+
+- **Middleware `ensureAuthenticated`**:  
+  Verifica che l’utente abbia una sessione valida (login eseguito). Se non autenticato, risponde con **401 Unauthorized**.
+
+- **Risposta JSON**:  
+  - `token`: recupera il JWT firmato salvato precedentemente in `req.session.jwtToken`.  
+  - `expiresIn`: indica la durata di validità del token, presa dalla configurazione (`config.jwt.expiresIn`, es. `"24h"`).
+
+- **Utilizzo tipico**:  
+  Client-side (SPA o app mobile) può richiamare `/api/token` dopo aver stabilito una sessione di login per ottenere il JWT da utilizzare in successive chiamate API protette.
+
+- **Scopo**:  
+  Separare la generazione del token dalla logica di autenticazione iniziale, fornendo un endpoint dedicato per il recupero del JWT e il relativo TTL.
 
 ### API Protetta
 ```javascript
@@ -733,11 +756,22 @@ app.get('/api/protected', authenticateJWT, (req, res) => {
 ```
 
 **Spiegazione:**
-- Esempio di API protetta con JWT
-- **Middleware**: `authenticateJWT` (autenticazione tramite token)
-- **Risposta**: Messaggio di successo, dati utente e timestamp
-- **Dimostrazione**: Mostra come proteggere le API con JWT
+- **Percorso**: `GET /api/protected` è un endpoint API REST dedicato a testare risorse protette tramite JWT.
 
+- **Middleware `authenticateJWT`**:  
+  - Verifica la presenza dell'header `Authorization: Bearer <token>`.  
+  - Controlla la validità e la firma del JWT con `jwt.verify()`.  
+  - In caso di successo, popola `req.user` con il payload decodificato; altrimenti risponde con:
+    - **401 Unauthorized** se manca il token.
+    - **403 Forbidden** se il token è invalido o scaduto.
+
+- **Risposta JSON**:  
+  - `message`: conferma che l'accesso è stato autorizzato.  
+  - `user`: restituisce i dati estratti dal payload del JWT (`req.user`), tipicamente `id`, `email`, `name`, `provider`.  
+  - `timestamp`: indica l'orario della risposta, utile per debugging o log lato client.
+
+- **Scopo**:  
+  Fornire un esempio concreto di endpoint protetto da autenticazione stateless con JWT, verificando la validità del token e autorizzando l'accesso solo a chi presenta un token corretto.
 ---
 
 ## 17. Logout
